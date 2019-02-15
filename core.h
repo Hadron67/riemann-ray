@@ -37,6 +37,9 @@ struct vec3 {
     rrfloat euclidLen2() const {
         return e1*e1 + e2*e2 + e3*e3;
     }
+    rrfloat euclidDot(const vec3 &v) const {
+        return e1*v.e1 + e2*v.e2 + e3*v.e3;
+    }
     vec3 operator + (const vec3 &v) const { return vec3(e1 + v.e1, e2 + v.e2, e3 + v.e3, patchID); };
     vec3 operator - (const vec3 &v) const { return vec3(e1 - v.e1, e2 - v.e2, e3 - v.e3, patchID); }
     vec3 operator * (rrfloat a) const { return vec3(e1 * a, e2 * a, e3 * a, patchID); }
@@ -63,10 +66,10 @@ struct Screen {
     }
 };
 struct Camera {
-    rrfloat w, ratio /* = w / h */;
+    rrfloat ratio /* = w / h */;
     vec3 pos, axis, up, across;
 
-    Camera(rrfloat w, rrfloat ratio, rrfloat fov, const vec3 &pos, const vec3 &dir, const vec3 &up);
+    Camera(rrfloat ratio, rrfloat fov, const vec3 &pos, const vec3 &dir, const vec3 &up);
 };
 
 struct HitTestResult {

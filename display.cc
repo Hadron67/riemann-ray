@@ -16,6 +16,8 @@ static int calculateThread(void *ptr){
             renderer->updateSurface();
             printf("%u\n", i++);
         }
+        renderer->updateSurface();
+        printf("%u\n", i++);
         renderer->renderer.resetRender();
     } while(!renderer->quit && data->onDone());
     return 0;

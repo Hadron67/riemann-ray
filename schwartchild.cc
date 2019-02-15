@@ -2,6 +2,8 @@
 #include "core.h"
 #include "display.h"
 
+#define DEG(a) ((a) * M_PI / 180)
+
 using namespace rr;
 /*
     ds^2 = -(1 - r_g / r + r_q^2 / r^2)dt^2 + dr^2 / (1 - r_g / r + r_q^2 / r^2) + r^2 (d\theta^2 + \sin^2\theta d\phi^2)
@@ -61,6 +63,43 @@ class ReissnerEngine: public Engine {
     }
 };
 
+class TexturedSphere: public Object {
+    SDL_Surface *image;
+    rrfloat r;
+    vec3 centre;
+    public:
+    TexturedSphere(const char *fname, rrfloat r, const vec3 &centre): r(r), centre(centre){
+        image = SDL_LoadBMP(fname);
+    }
+    ~TexturedSphere(){
+        SDL_FreeSurface(image);
+    }
+    void hitTest(const ray *start, const ray *end, HitTestResult *result) const {
+        vec3 pos1 = start->pos - centre, pos2 = end->pos - centre;
+        rrfloat r1 = sqrt(pos1.euclidLen2()), r2 = sqrt(pos2.euclidLen2());
+        if ((r1 < r) ^ (r2 < r)){
+            rrfloat r12 = pos1.euclidLen2(), r22 = pos2.euclidLen2(), dot = pos1.euclidDot(pos2);
+            rrfloat a = r12 + r22 - 2*dot, b = 2*(dot - r12), c = r12 - r*r;
+            rrfloat l = (-b - sqrt(b*b - 4*a*c)) / (2*a);
+            vec3 p = cartisianToSpherical(pos1 + (pos2 - pos1) * l);
+
+            result->status = 1;
+            result->distance = r > r1 ? r - r1 : r1 - r;
+            color &cl = result->c;
+            unsigned int x = static_cast<unsigned int>(p.e3 * image->w / (2*M_PI));
+            unsigned int y = static_cast<unsigned int>((1 - cos(p.e2)) / 2 * image->h);
+
+            Uint32 *pixel = reinterpret_cast<Uint32 *>( reinterpret_cast<char *>(image->pixels) + image->pitch * y + image->format->BytesPerPixel * x );
+            SDL_GetRGB(*pixel, image->format, &cl.r, &cl.g, &cl.b);
+            
+            cl.a = 255;
+        }
+        else {
+            result->status = 0;
+        }
+    }
+};
+
 class Sphere: public Object {
     vec3 centre;
     rrfloat r;
@@ -89,35 +128,25 @@ class Sphere: public Object {
 class StrippedSphere: public Object {
     public:
     rrfloat r;
-    color stripColor;
+    color c1, c2;
     rrfloat phiPatch, thetalPatch;
     vec3 centre;
-    StrippedSphere(const vec3 &centre, rrfloat r, const color &c, unsigned int phidiv, unsigned int thetadiv): 
-        Object(), r(r), stripColor(c), phiPatch(2*M_PI / phidiv), thetalPatch(M_PI / thetadiv), centre(centre){}
+    StrippedSphere(const vec3 &centre, rrfloat r, const color &c1, const color &c2, unsigned int phidiv, unsigned int thetadiv): 
+        Object(), r(r), c1(c1), c2(c2), phiPatch(2*M_PI / phidiv), thetalPatch(M_PI / thetadiv), centre(centre){}
     void hitTest(const ray *start, const ray *end, HitTestResult *result) const {
         vec3 pos1 = start->pos - centre, pos2 = end->pos - centre;
         rrfloat r1 = sqrt(pos1.euclidLen2()), r2 = sqrt(pos2.euclidLen2());
+        if ((r1 < r) ^ (r2 < r)){
+            rrfloat r12 = pos1.euclidLen2(), r22 = pos2.euclidLen2(), dot = pos1.euclidDot(pos2);
+            rrfloat a = r12 + r22 - 2*dot, b = 2*(dot - r12), c = r12 - r*r;
+            rrfloat l = (-b - sqrt(b*b - 4*a*c)) / (2*a);
+            vec3 p = cartisianToSpherical(pos1 + (pos2 - pos1) * l);
+            unsigned int i = static_cast<unsigned int>(p.e2 / thetalPatch) % 2;
+            unsigned int j = static_cast<unsigned int>(p.e3 / phiPatch) % 2;
 
-        if (r1 < r && r2 > r){
-            vec3 s = cartisianToSpherical(pos1);
             result->status = 1;
-            result->distance = r - r1;
-            unsigned int i = static_cast<unsigned int>(s.e2 / thetalPatch) % 2;
-            unsigned int j = static_cast<unsigned int>(s.e3 / phiPatch) % 2;
-            result->c = (i ^ j) ? color() : stripColor;
-        }
-        else if (r1 > r && r2 < r){
-            vec3 s = cartisianToSpherical(pos1);
-            result->status = 1;
-            result->distance = r1 - r;
-            unsigned int i = static_cast<unsigned int>(s.e2 / thetalPatch) % 2;
-            unsigned int j = static_cast<unsigned int>(s.e3 / phiPatch) % 2;
-            if (i ^ j){
-                result->c = stripColor;
-            }
-            else {
-                result->c = color();
-            }
+            result->c = (i ^ j) ? c1 : c2;
+            result->distance = r > r1 ? r - r1 : r1 - r;
         }
         else {
             result->status = 0;
@@ -126,29 +155,43 @@ class StrippedSphere: public Object {
 };
 
 class Disc: public Object {
-
-};
-
-class PathPrinter: public Object {
-    unsigned int x, y;
     public:
-    PathPrinter(unsigned int x, unsigned int y): x(x), y(y) {}
+    rrfloat r, R;
+    color c1, c2;
+    rrfloat dphi;
+    Disc(rrfloat r, rrfloat R, const color &c1, const color &c2, unsigned int div): r(r), R(R), c1(c1), c2(c2), dphi(2*M_PI / div){}
     void hitTest(const ray *start, const ray *end, HitTestResult *result) const {
-        result->c = 0;
-        if (start->info.x == x && start->info.y == y)
-            printf("(%lf, %lf, %lf)\n", start->pos.e1, start->pos.e2, start->pos.e3);
+        const vec3 &p1 = start->pos, &p2 = end->pos;
+        if ((p1.e3 > 0) ^ (p2.e3 > 0)){
+            rrfloat l = p1.e3 / (p1.e3 - p2.e3);
+            vec3 p = p1 + (p2 - p1) * l;
+            rrfloat r0 = sqrt(p.e1*p.e1 + p.e2*p.e2);
+            if (r0 > r && r0 < R){
+                rrfloat phi = atan2(p.e2, p.e1) + M_PI;
+                unsigned int i = static_cast<unsigned int>(phi / dphi) % 2;
+                result->status = 1;
+                result->c = i ? c1 : c2;
+                result->distance = sqrt((p1 - p).euclidLen2());
+            }
+            else {
+                result->status = 0;
+            }
+        }
+        else {
+            result->status = 0;
+        }
     }
 };
 
 static void animation1(unsigned int h, unsigned int w, unsigned int count, unsigned int start, rrfloat thetaStart, rrfloat thetaEnd){
     Screen screen(h, w);
     ReissnerEngine engine(0.5, 0.5, 0.01, 1);
-    Camera c(3, w / rrfloat(h), 90, vec3(7, M_PI / 2, 0), vec3(0, 1, 0), vec3(0, 0, 1));
+    Camera c(w / rrfloat(h), 90, vec3(7, M_PI / 2, 0), vec3(0, 1, 0), vec3(0, 0, 1));
     WindowedRenderer renderer("hkm", &screen, &engine);
 
     Sphere sky(vec3(0, 0, 0), 10, color(50, 50, 50));
     rrfloat R = 1.27;
-    StrippedSphere star(vec3(0, -1.27, 0), 0.7, color(0, 255, 0), 10, 5);
+    StrippedSphere star(vec3(0, -1.27, 0), 0.7, color(0, 255, 0), color(0, 0, 0), 10, 5);
     renderer.renderer.addObject(&sky);
     renderer.renderer.addObject(&star);
     renderer.renderer.antiAlias = 0;
@@ -174,32 +217,90 @@ static void animation1(unsigned int h, unsigned int w, unsigned int count, unsig
     });
 }
 
+static void test(unsigned int h, unsigned int w){
+    Screen screen(h, w);
+    ReissnerEngine engine(0.5, 0, 0.01, 1);
+    Camera c(w / rrfloat(h), 90, vec3(8, M_PI * 2, M_PI / 2), vec3(0, 1, 0), vec3(0, 0, 1));
+    WindowedRenderer renderer("hkm", &screen, &engine);
+
+    StrippedSphere hole(vec3(0, 0, 0), 0.5, color(0, 0, 128), color(0, 0, 0), 10, 5); 
+    // StrippedSphere sky(vec3(0, 0, 0), 10, color(50, 50, 50), color(30, 30, 30), 40, 20);
+    TexturedSphere sky("../assets/skymap2.bmp", 10, vec3(0, 0, 0));
+    StrippedSphere star(vec3(-1.5, 0, 0), 0.5, color(0, 255, 0), color(0, 0, 0), 10, 5);
+    renderer.renderer.addObject(&hole);
+    renderer.renderer.addObject(&sky);
+    // renderer.renderer.addObject(&star);
+    renderer.renderer.antiAlias = 0;
+
+    unsigned int i = 0;
+    renderer.startRender(c, [&renderer]() -> int {
+        renderer.saveBMP("test.bmp");
+        printf("Image saved\n");
+        return 0;
+    });
+}
+
+static int animation2(unsigned int h, unsigned int w, rrfloat startX, rrfloat endX, unsigned int count, unsigned int start){
+    Screen screen(h, w);
+    ReissnerEngine engine(0.5, 0, 0.01, 1);
+    Camera c(w / rrfloat(h), 90, vec3(7, M_PI / 2, 0), vec3(0, 1, 0), vec3(0, 0, 1));
+    WindowedRenderer renderer("hkm", &screen, &engine);
+
+    StrippedSphere hole(vec3(0, 0, 0), 0.5, color(0, 0, 128), color(0, 0, 0), 10, 5); 
+    Sphere sky(vec3(0, 0, 0), 10, color(50, 50, 50));
+    StrippedSphere star(vec3(-1.5, 0, 0), 0.7, color(0, 255, 0), color(0, 0, 0), 10, 5);
+    renderer.renderer.addObject(&hole);
+    renderer.renderer.addObject(&sky);
+    renderer.renderer.addObject(&star);
+    renderer.renderer.antiAlias = 0;
+
+    unsigned int i = start;
+    star.centre.e2 = startX + rrfloat(i) / count * (endX - startX);
+    renderer.startRender(c, [&renderer, &i, count, &star, &startX, &endX]() -> int {
+        char fname[50];
+        snprintf(fname, 50, "animation2/t%u.bmp", i);
+        renderer.saveBMP(fname);
+        printf("Image %s saved.\n", fname);
+        i++;
+        if (i >= count){
+            printf("[@] done.\n");
+            return 0;
+        }
+        else {
+            star.centre.e2 = startX + rrfloat(i) / count * (endX - startX);
+            renderer.clear();
+            return 1;
+        }
+    });
+}
+
+static int test2(unsigned int h, unsigned int w){
+    Screen screen(h, w);
+    ReissnerEngine engine(0.5, 0, 0.01, 1);
+    Camera c(w / rrfloat(h), 90, vec3(5, DEG(85), 0), vec3(0, 1, 0), vec3(0, 0, 1));
+    WindowedRenderer renderer("hkm", &screen, &engine);
+
+    StrippedSphere hole(vec3(0, 0, 0), 0.5, color(0, 0, 255), color(0, 0, 0), 10, 5);
+    Sphere sky(vec3(0, 0, 0), 10, color(50, 50, 50));
+    Disc d(1, 2, color(255, 255, 255), color(0, 255, 0), 10);
+    // renderer.renderer.addObject(&hole);
+    renderer.renderer.addObject(&d);
+    renderer.renderer.addObject(&sky);
+    renderer.renderer.antiAlias = 0;
+    renderer.startRender(c, [&renderer]() -> int {
+        renderer.saveBMP("test.bmp");
+        printf("Image saved.\n");
+        return 0;
+    });
+}
+
 int main(int argc, const char *args[]){
     unsigned int h = 400, w = 400;
     SDL_Init(SDL_INIT_VIDEO);
     {
-        animation1(h, w, 40, 2, 0, M_PI);
-        // Screen screen(h, w);
-        // ReissnerEngine engine(0.5, 0.5, 0.01, 1);
-        // Camera c(3, w / rrfloat(h), 90, vec3(7, M_PI / 2, M_PI / 2), vec3(0, 1, 0), vec3(0, 0, 1));
-        // WindowedRenderer renderer("hkm", &screen, &engine);
-        // PathPrinter pp(0, 0);
-
-        // StrippedSphere hole(vec3(0, 0, 0), 0.51, color(0, 0, 128), 10, 5); 
-        // Sphere sky(vec3(0, 0, 0), 10, color(50, 50, 50));
-        // StrippedSphere star(vec3(0, -1.27, 0), 0.7, color(0, 255, 0), 10, 5);
-        // // renderer.renderer.addObject(&hole);
-        // renderer.renderer.addObject(&sky);
-        // renderer.renderer.addObject(&star);
-        // renderer.renderer.antiAlias = 0;
-        // // renderer.renderer.addObject(&pp);
-
-        // unsigned int i = 0;
-        // renderer.startRender(c, [&renderer]() -> int {
-        //     renderer.saveBMP("test.bmp");
-        //     printf("Image saved\n");
-        //     return 0;
-        // });
+        // animation2(h, w, -2.5, 2.5, 20, 0);
+        test(h, w);
+        // test2(h, w);
     }
     SDL_Quit();
 }

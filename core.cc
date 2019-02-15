@@ -15,12 +15,13 @@ Screen::~Screen(){
     // color has no destructor
 }
 
-Camera::Camera(rrfloat w, rrfloat ratio, rrfloat fov, const vec3 &pos, const vec3 &dir, const vec3 &up): w(w), ratio(ratio), pos(pos), up(up){
-    vec3 d(dir);
-    d.normalize();
-    this->up.normalize(); 
-    across = d.euclidCross(this->up);
-    axis = d * (w / ratio / 2 / tan(fov / 2 * M_PI / 180));
+Camera::Camera(rrfloat ratio, rrfloat fov, const vec3 &pos, const vec3 &dir, const vec3 &up): ratio(ratio), pos(pos){
+    this->axis = dir;
+    this->axis.normalize();
+    rrfloat a = tan(fov / 2 * M_PI / 180);
+    vec3 n = up - this->axis * this->axis.euclidDot(up);
+    this->up = n.normalize() * a;
+    across = this->axis.euclidCross(this->up) / ratio;
 }
 
 Object::Object(): prev(nullptr), next(nullptr) {}
