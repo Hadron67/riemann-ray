@@ -97,11 +97,11 @@ class RayRenderer {
     Object *objHead;
     Screen *screen;
     Engine *engine;
-    unsigned int maxSteps;
     unsigned int renderY;
     const Camera *c;
 
     public:
+    unsigned int maxSteps;
     int antiAlias;
     RayRenderer(Screen *s, Engine *e);
     void addObject(Object *obj);

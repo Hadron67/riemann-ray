@@ -201,7 +201,7 @@ static void animation1(unsigned int h, unsigned int w, unsigned int count, unsig
 
     renderer.startRender(c, [&renderer, &i, count, R, &c, &thetaEnd, &thetaStart]() -> int {
         char fname[50];
-        snprintf(fname, 50, "animation1/t%u.bmp", i);
+        snprintf(fname, 50, "animation1-1/t%u.bmp", i);
         renderer.saveBMP(fname);
         printf("Image animation1/t%u.bmp saved.\n", i);
         i++;
@@ -219,18 +219,19 @@ static void animation1(unsigned int h, unsigned int w, unsigned int count, unsig
 
 static void test(unsigned int h, unsigned int w){
     Screen screen(h, w);
-    ReissnerEngine engine(0.5, 0, 0.01, 1);
-    Camera c(w / rrfloat(h), 90, vec3(8, M_PI * 2, M_PI / 2), vec3(0, 1, 0), vec3(0, 0, 1));
+    ReissnerEngine engine(0.5, 0, 0.005, 1);
+    Camera c(w / rrfloat(h), 90, vec3(0.75, M_PI / 2, 0), vec3(1, 0, 0), vec3(0, -1, 0));
     WindowedRenderer renderer("hkm", &screen, &engine);
+    renderer.renderer.maxSteps = 20000;
 
     StrippedSphere hole(vec3(0, 0, 0), 0.5, color(0, 0, 128), color(0, 0, 0), 10, 5); 
-    // StrippedSphere sky(vec3(0, 0, 0), 10, color(50, 50, 50), color(30, 30, 30), 40, 20);
-    TexturedSphere sky("../assets/skymap2.bmp", 10, vec3(0, 0, 0));
+    // StrippedSphere sky(vec3(0, 0, 0), 10, color(50, 50, 50), color(50, 50, 50), 40, 20);
+    TexturedSphere sky("../assets/skymap.bmp", 10, vec3(0, 0, 0));
     StrippedSphere star(vec3(-1.5, 0, 0), 0.5, color(0, 255, 0), color(0, 0, 0), 10, 5);
     renderer.renderer.addObject(&hole);
     renderer.renderer.addObject(&sky);
     // renderer.renderer.addObject(&star);
-    renderer.renderer.antiAlias = 0;
+    renderer.renderer.antiAlias = 1;
 
     unsigned int i = 0;
     renderer.startRender(c, [&renderer]() -> int {
@@ -274,19 +275,104 @@ static int animation2(unsigned int h, unsigned int w, rrfloat startX, rrfloat en
     });
 }
 
+static int animation3(unsigned int h, unsigned int w, rrfloat startY, rrfloat endY, unsigned int count, unsigned int start){
+    Screen screen(h, w);
+    ReissnerEngine engine(0.5, 0.3, 0.01, 1);
+    Camera c(w / rrfloat(h), 90, vec3(5, M_PI / 2, 0), vec3(0, 1, 0), vec3(0, 0, 1));
+    WindowedRenderer renderer("hkm", &screen, &engine);
+    renderer.renderer.maxSteps = 20000;
+
+    StrippedSphere sky(vec3(0, 0, 0), 10, color(50, 50, 50), color(50, 50, 50), 40, 20);
+    StrippedSphere star(vec3(-1, 1, 0), 0.5, color(0, 255, 0), color(0, 0, 0), 10, 5);
+    renderer.renderer.addObject(&sky);
+    renderer.renderer.addObject(&star);
+    renderer.renderer.antiAlias = 0;
+
+    unsigned int i = start;
+    star.centre.e2 = startY + (endY - startY) * rrfloat(i) / count;
+    renderer.startRender(c, [&renderer, &i, &star, count, startY, endY]() -> int {
+        char fname[50];
+        snprintf(fname, 50, "animation3/t%u.bmp", i++);
+        renderer.saveBMP(fname);
+        printf("Image %s saved.\n", fname);
+        if (i >= count){
+            printf("done.\n");
+            return 0;
+        }
+        else {
+            star.centre.e2 = startY + (endY - startY) * rrfloat(i) / count;
+            renderer.clear();
+            return 1;
+        }
+    });
+}
+
+static void animation4(unsigned int h, unsigned int w, unsigned int count, unsigned int start, rrfloat startY, rrfloat endY){
+    Screen screen(h, w);
+    ReissnerEngine engine(0.5, 0.3, 0.01, 1);
+    Camera c(w / rrfloat(h), 90, vec3(5, M_PI / 2, 0), vec3(0, 1, 0), vec3(0, 0, 1));
+    WindowedRenderer renderer("hkm", &screen, &engine);
+
+    Sphere sky(vec3(0, 0, 0), 10, color(50, 50, 50));
+    StrippedSphere star(vec3(0, 0, 0), 0.5, color(0, 255, 0), color(0, 0, 0), 10, 5);
+    renderer.renderer.addObject(&sky);
+    renderer.renderer.addObject(&star);
+    renderer.renderer.antiAlias = 0;
+
+    unsigned int i = start;
+    star.centre.e2 = startY + (endY - startY) * rrfloat(i) / count;
+
+    renderer.startRender(c, [&renderer, &i, count, &star, startY, endY]() -> int {
+        char fname[50];
+        snprintf(fname, 50, "animation4/t%u.bmp", i);
+        renderer.saveBMP(fname);
+        printf("Image animation1/t%u.bmp saved.\n", i);
+        i++;
+        if (i >= count){
+            printf("done.\n");
+            return 0;
+        }
+        else {
+            star.centre.e2 = startY + (endY - startY) * rrfloat(i) / count;
+            renderer.clear();
+            return 1;
+        }
+    });
+}
+
 static int test2(unsigned int h, unsigned int w){
     Screen screen(h, w);
-    ReissnerEngine engine(0.5, 0, 0.01, 1);
+    ReissnerEngine engine(0, 0, 0.01, 1);
     Camera c(w / rrfloat(h), 90, vec3(5, DEG(85), 0), vec3(0, 1, 0), vec3(0, 0, 1));
     WindowedRenderer renderer("hkm", &screen, &engine);
 
     StrippedSphere hole(vec3(0, 0, 0), 0.5, color(0, 0, 255), color(0, 0, 0), 10, 5);
     Sphere sky(vec3(0, 0, 0), 10, color(50, 50, 50));
-    Disc d(1, 2, color(255, 255, 255), color(0, 255, 0), 10);
-    // renderer.renderer.addObject(&hole);
+    Disc d(1, 2, color(255, 255, 255), color(0, 255, 0), 20);
+    renderer.renderer.addObject(&hole);
     renderer.renderer.addObject(&d);
     renderer.renderer.addObject(&sky);
-    renderer.renderer.antiAlias = 0;
+    renderer.renderer.antiAlias = 1;
+    renderer.startRender(c, [&renderer]() -> int {
+        renderer.saveBMP("test.bmp");
+        printf("Image saved.\n");
+        return 0;
+    });
+}
+
+static int test3(unsigned int h, unsigned int w){
+    Screen screen(h, w);
+    ReissnerEngine engine(10, 4, 0.01, 1);
+    Camera c(w / rrfloat(h), 90, vec3(5, DEG(85), 0), vec3(0, 1, 0), vec3(0, 0, 1));
+    WindowedRenderer renderer("hkm", &screen, &engine);
+
+    StrippedSphere hole(vec3(0, 0, 0), 0.5, color(0, 0, 255), color(0, 0, 0), 10, 5);
+    Sphere sky(vec3(0, 0, 0), 10, color(50, 50, 50));
+    Disc d(1, 2, color(255, 255, 255), color(0, 255, 0), 20);
+    renderer.renderer.addObject(&hole);
+    renderer.renderer.addObject(&d);
+    renderer.renderer.addObject(&sky);
+    renderer.renderer.antiAlias = 1;
     renderer.startRender(c, [&renderer]() -> int {
         renderer.saveBMP("test.bmp");
         printf("Image saved.\n");
@@ -298,7 +384,9 @@ int main(int argc, const char *args[]){
     unsigned int h = 400, w = 400;
     SDL_Init(SDL_INIT_VIDEO);
     {
+        // animation4(h, w, 20, 0, 2, 0);
         // animation2(h, w, -2.5, 2.5, 20, 0);
+        // animation3(h, w, -2, 2, 30, 0);
         test(h, w);
         // test2(h, w);
     }
