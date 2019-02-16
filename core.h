@@ -19,6 +19,22 @@ struct ColorMixer {
     void addColor(const color &c){ i++; r += c.r; g += c.g; b += c.b; a += c.a; }
     void done(color *c){ c->r = r / i; c->g = g / i; c->b = b / i; c->a = a / i; }
 };
+struct colorx {
+    unsigned int r, g, b, a;
+    colorx(unsigned int r = 0, unsigned int g = 0, unsigned int b = 0, unsigned int a = 255): r(r), g(g), b(b), a(a){}
+    colorx(const color &c): r(c.r), g(c.g), b(c.b), a(c.a){}
+    colorx operator + (const colorx &cx) { return colorx(r + cx.r, g + cx.g, b + cx.b, a + cx.a); }
+    colorx operator * (rrfloat f){ return colorx(r * f, g * f, b * f, a * f); }
+    colorx operator / (rrfloat f){ 
+        return colorx(
+            static_cast<unsigned int>(r / f), 
+            static_cast<unsigned int>(g / f), 
+            static_cast<unsigned int>(b / f), 
+            static_cast<unsigned int>(a / f)
+        ); 
+    }
+    color toColor(){ return color(uint8_t(r), uint8_t(g), uint8_t(b), uint8_t(a)); }
+};
 struct vec3 {
     unsigned int patchID;
     rrfloat e1, e2, e3;

@@ -19,9 +19,9 @@ Camera::Camera(rrfloat ratio, rrfloat fov, const vec3 &pos, const vec3 &dir, con
     this->axis = dir;
     this->axis.normalize();
     rrfloat a = tan(fov / 2 * M_PI / 180);
-    vec3 n = up - this->axis * this->axis.euclidDot(up);
-    this->up = n.normalize() * a;
-    across = this->axis.euclidCross(this->up) / ratio;
+    vec3 n = (up - this->axis * this->axis.euclidDot(up)).normalize();
+    this->up = n * a;
+    across = this->axis.euclidCross(n) * a * ratio;
 }
 
 Object::Object(): prev(nullptr), next(nullptr) {}
@@ -35,22 +35,6 @@ void RayRenderer::addObject(Object *obj){
     obj->next = objHead;
     objHead = obj;
 }
-
-// int RayRenderer::performHitTests(const vec3 &start, const vec3 &end, color *c){
-//     int found = 0;
-//     HitTestResult hresult;
-//     rrfloat distance = 0;
-//     for (Object *obj = objHead; obj != nullptr; obj = obj->next){
-//         obj->hitTest(start, end, &hresult);
-//         if (hresult.status && (!found || hresult.distance < distance)){
-//             found = 1;
-//             *c = hresult.c;
-//             distance = hresult.distance;
-//         }
-//     }
-
-//     return found;
-// }
 
 void RayRenderer::calculateOnePixel(unsigned x, unsigned int y, color *out){
     rrfloat a = rrfloat(x) / screen->width - 0.5, b = .5 - rrfloat(y) / screen->height;

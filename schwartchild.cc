@@ -9,6 +9,15 @@ using namespace rr;
     ds^2 = -(1 - r_g / r + r_q^2 / r^2)dt^2 + dr^2 / (1 - r_g / r + r_q^2 / r^2) + r^2 (d\theta^2 + \sin^2\theta d\phi^2)
 */
 
+static color getColorAt(const SDL_Surface *image, unsigned int x, unsigned int y){
+    color cl;
+    Uint32 *pixel = reinterpret_cast<Uint32 *>( reinterpret_cast<char *>(image->pixels) + image->pitch * y + image->format->BytesPerPixel * x );
+    if (x < image->w && y < image->h){
+        SDL_GetRGB(*pixel, image->format, &cl.r, &cl.g, &cl.b);
+    }
+    return cl;
+}
+
 static vec3 sphericalToCartisian(const vec3 &p){
     return vec3(p.e1 * sin(p.e2) * cos(p.e3), p.e1 * sin(p.e2) * sin(p.e3), p.e1 * cos(p.e2));
 }
@@ -24,10 +33,15 @@ struct VelRay: public ray {
 };
 
 class ReissnerEngine: public Engine {
-    rrfloat rg, rq2, dlambda, omega;
     VelRay v1, v2;
     public:
+    rrfloat rg, rq2, dlambda, omega;
     ReissnerEngine(rrfloat rg, rrfloat rq, rrfloat dlambda, rrfloat omega): rg(rg), rq2(rq * rq), dlambda(dlambda), omega(omega) {}
+    void setRq(rrfloat rq){ rq2 = rq*rq; }
+    rrfloat getOutterHorizonRadius(){
+        rrfloat delta = rg*rg - 4*rq2;
+        return delta > 0 ? (rg + sqrt(delta)) / 2 : 0;
+    }
     void allocRay(unsigned int x, unsigned int y, unsigned int index, ray **r1, ray **r2){
         *r1 = &v1;
         *r2 = &v2;
@@ -65,10 +79,10 @@ class ReissnerEngine: public Engine {
 
 class TexturedSphere: public Object {
     SDL_Surface *image;
-    rrfloat r;
+    rrfloat r, phase;
     vec3 centre;
     public:
-    TexturedSphere(const char *fname, rrfloat r, const vec3 &centre): r(r), centre(centre){
+    TexturedSphere(const char *fname, rrfloat r, rrfloat phase, const vec3 &centre): r(r), phase(phase), centre(centre){
         image = SDL_LoadBMP(fname);
     }
     ~TexturedSphere(){
@@ -82,17 +96,23 @@ class TexturedSphere: public Object {
             rrfloat a = r12 + r22 - 2*dot, b = 2*(dot - r12), c = r12 - r*r;
             rrfloat l = (-b - sqrt(b*b - 4*a*c)) / (2*a);
             vec3 p = cartisianToSpherical(pos1 + (pos2 - pos1) * l);
+            p.e3 += phase;
+            while (p.e3 < 0) p.e3 += 2*M_PI;
+            while (p.e3 > 2*M_PI) p.e3 -= 2*M_PI;
 
             result->status = 1;
             result->distance = r > r1 ? r - r1 : r1 - r;
             color &cl = result->c;
-            unsigned int x = static_cast<unsigned int>(p.e3 * image->w / (2*M_PI));
-            unsigned int y = static_cast<unsigned int>((1 - cos(p.e2)) / 2 * image->h);
+            rrfloat x = p.e3 * image->w / (2*M_PI);
+            rrfloat y = (1 - cos(p.e2)) / 2 * image->h;
+            unsigned int x0 = static_cast<unsigned int>(x), y0 = static_cast<unsigned int>(y);
 
-            Uint32 *pixel = reinterpret_cast<Uint32 *>( reinterpret_cast<char *>(image->pixels) + image->pitch * y + image->format->BytesPerPixel * x );
-            SDL_GetRGB(*pixel, image->format, &cl.r, &cl.g, &cl.b);
-            
-            cl.a = 255;
+            colorx c1 = colorx(getColorAt(image, x0, y0));
+            colorx c2 = colorx(getColorAt(image, x0 + 1, y0));
+            colorx c3 = colorx(getColorAt(image, x0, y0 + 1));
+            colorx c4 = colorx(getColorAt(image, x0 + 1, y0 + 1));
+            rrfloat m = x - x0, n = y - y0;
+            result->c = (c1 * (1 - m) * (1 - n) + c2 * m * (1 - n) + c3 * (1 - m) * n + c4 * m * n).toColor();
         }
         else {
             result->status = 0;
@@ -101,10 +121,10 @@ class TexturedSphere: public Object {
 };
 
 class Sphere: public Object {
+    public:
     vec3 centre;
     rrfloat r;
     color c;
-    public:
     Sphere(const vec3 &centre, rrfloat r, const color &c): Object(), centre(centre), r(r), c(c){}
     void hitTest(const ray *start, const ray *end, HitTestResult *result) const {
         vec3 pos1 = start->pos - centre, pos2 = end->pos - centre;
@@ -217,21 +237,24 @@ static void animation1(unsigned int h, unsigned int w, unsigned int count, unsig
     });
 }
 
-static void test(unsigned int h, unsigned int w){
+static void test(){
+    unsigned int h = 400, w = 400;
     Screen screen(h, w);
-    ReissnerEngine engine(0.5, 0, 0.005, 1);
-    Camera c(w / rrfloat(h), 90, vec3(0.75, M_PI / 2, 0), vec3(1, 0, 0), vec3(0, -1, 0));
+    ReissnerEngine engine(0.5, 0.7, 0.01, 1);
+    Camera c(w / rrfloat(h), 120, vec3(7, M_PI / 2, 0), vec3(0, 1, 0), vec3(0, 0, 1));
     WindowedRenderer renderer("hkm", &screen, &engine);
-    renderer.renderer.maxSteps = 20000;
+    renderer.renderer.maxSteps = 200000;
 
     StrippedSphere hole(vec3(0, 0, 0), 0.5, color(0, 0, 128), color(0, 0, 0), 10, 5); 
-    // StrippedSphere sky(vec3(0, 0, 0), 10, color(50, 50, 50), color(50, 50, 50), 40, 20);
-    TexturedSphere sky("../assets/skymap.bmp", 10, vec3(0, 0, 0));
-    StrippedSphere star(vec3(-1.5, 0, 0), 0.5, color(0, 255, 0), color(0, 0, 0), 10, 5);
-    renderer.renderer.addObject(&hole);
+    Sphere blackHole(vec3(0, 0, 0), 0.49, color(0, 0, 0));
+    // StrippedSphere sky(vec3(0, 0, 0), 10, color(50, 50, 50), color(40, 40, 40), 120, 60);
+    TexturedSphere sky("../assets/skymap.bmp", 10, DEG(270), vec3(0, 0, 0));
+    StrippedSphere star(vec3(-10.4, 0, 0), 0.5, color(0, 255, 0), color(0, 0, 0), 10, 5);
+    // renderer.renderer.addObject(&hole);
+    // renderer.renderer.addObject(&blackHole);
     renderer.renderer.addObject(&sky);
     // renderer.renderer.addObject(&star);
-    renderer.renderer.antiAlias = 1;
+    renderer.renderer.antiAlias = 0;
 
     unsigned int i = 0;
     renderer.startRender(c, [&renderer]() -> int {
@@ -340,6 +363,56 @@ static void animation4(unsigned int h, unsigned int w, unsigned int count, unsig
     });
 }
 
+static void animation5(rrfloat rg, rrfloat rq, unsigned int count1, unsigned int count2, unsigned int start){
+    unsigned int h = 400, w = 400;
+    Screen screen(h, w);
+    ReissnerEngine engine(0, 0, 0.01, 1);
+    Camera c(w / rrfloat(h), 120, vec3(7, M_PI / 2, 0), vec3(0, 1, 0), vec3(0, 0, 1));
+    WindowedRenderer renderer("hkm", &screen, &engine);
+    renderer.renderer.maxSteps = 200000;
+
+    Sphere blackHole(vec3(0, 0, 0), 0, color(0, 0, 0));
+    TexturedSphere sky("../assets/skymap.bmp", 10, DEG(270), vec3(0, 0, 0));
+    StrippedSphere star(vec3(-10.4, 0, 0), 0.5, color(0, 255, 0), color(0, 0, 0), 10, 5);
+    renderer.renderer.addObject(&blackHole);
+    renderer.renderer.addObject(&sky);
+    renderer.renderer.antiAlias = 0;
+
+    unsigned int i = start;
+    if (i < count2){
+        blackHole.r = engine.rg = rrfloat(i) / count1 * rg;
+        engine.setRq(0);
+    }
+    else {
+        engine.rg = rg;
+        engine.setRq(rq * rrfloat(i - count1) / count2);
+        blackHole.r = engine.getOutterHorizonRadius();
+    }
+    renderer.startRender(c, [&renderer, &engine, &i, rg, rq, count1, count2, &blackHole]() -> int {
+        char fname[50];
+        snprintf(fname, 50, "animation5-1/t%u.bmp", i++);
+        renderer.saveBMP(fname);
+        printf("Image %s saved.\n", fname);
+
+        if (i < count1){
+            blackHole.r = engine.rg = rrfloat(i) / count1 * rg;
+            engine.setRq(0);
+            renderer.clear();
+        }
+        else if (i < count1 + count2){
+            engine.rg = rg;
+            engine.setRq(rq * rrfloat(i - count1) / count2);
+            blackHole.r = engine.getOutterHorizonRadius();
+            renderer.clear();
+        }
+        else {
+            printf("Done.\n");
+            return 0;
+        }
+        return 1;
+    });
+}
+
 static int test2(unsigned int h, unsigned int w){
     Screen screen(h, w);
     ReissnerEngine engine(0, 0, 0.01, 1);
@@ -387,7 +460,8 @@ int main(int argc, const char *args[]){
         // animation4(h, w, 20, 0, 2, 0);
         // animation2(h, w, -2.5, 2.5, 20, 0);
         // animation3(h, w, -2, 2, 30, 0);
-        test(h, w);
+        animation5(0.5, 1, 20, 25, 20);
+        // test();
         // test2(h, w);
     }
     SDL_Quit();
